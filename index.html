@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Журнал старосты</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #121212);
+      --sec-bg: var(--tg-theme-secondary-bg-color, #1e1e1e);
+      --text: var(--tg-theme-text-color, #ffffff);
+      --hint: var(--tg-theme-hint-color, #8e8e93);
+      --btn: var(--tg-theme-button-color, #2ea6ff);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+      --green: #34c759;
+      --yellow: #ff9f0a;
+      --red: #ff453a;
+      --gray: #636366;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 14px; padding-bottom: 40px; }
+
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .date-badge { font-size: 13px; color: var(--hint); background: var(--sec-bg); padding: 5px 10px; border-radius: 10px; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; background: var(--sec-bg); padding: 4px; border-radius: 12px; }
+    .tab { flex: 1; text-align: center; padding: 8px; font-size: 14px; font-weight: 600; border-radius: 9px; cursor: pointer; color: var(--hint); transition: 0.2s; }
+    .tab.active { background: var(--btn); color: var(--btn-text); }
+
+    .lessons-bar { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 4px; }
+    .lesson-chip { white-space: nowrap; padding: 8px 12px; border-radius: 10px; background: var(--sec-bg); font-size: 13px; cursor: pointer; border: 1.5px solid transparent; }
+    .lesson-chip.active { border-color: var(--btn); font-weight: 600; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+    .stat-card { background: var(--sec-bg); border-radius: 12px; padding: 10px 6px; text-align: center; cursor: pointer; border: 1.5px solid transparent; transition: 0.15s; }
+    .stat-card.active { border-color: var(--btn); }
+    .stat-num { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+    .stat-label { font-size: 11px; color: var(--hint); }
+
+    .student-list { display: flex; flex-direction: column; gap: 8px; }
+    .student-card { background: var(--sec-bg); border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .st-info { display: flex; flex-direction: column; gap: 4px; }
+    .st-name { font-size: 15px; font-weight: 600; }
+    .st-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+
+    .badge { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 11px; }
+    .b-present { background: rgba(52, 199, 89, 0.18); color: var(--green); }
+    .b-late { background: rgba(255, 159, 10, 0.18); color: var(--yellow); }
+    .b-absent { background: rgba(255, 69, 58, 0.18); color: var(--red); }
+    .b-silent { background: rgba(142, 142, 147, 0.18); color: var(--hint); }
+    .b-warn { background: rgba(255, 69, 58, 0.25); color: var(--red); }
+
+    .actions { display: flex; gap: 6px; }
+    .act-btn { width: 34px; height: 34px; border-radius: 9px; border: none; background: var(--bg); color: var(--text); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.55; transition: 0.15s; }
+    .act-btn.selected { opacity: 1; transform: scale(1.06); box-shadow: 0 0 0 1.5px var(--btn); }
+
+    .subj-card { background: var(--sec-bg); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+    .subj-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .hw-item { font-size: 13px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.06); color: var(--text); }
+    .hw-date { color: var(--btn); font-weight: 600; margin-right: 6px; }
+    .empty { text-align: center; color: var(--hint); padding: 30px 10px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="groupTitle">Загрузка...</h1>
+    <div class="date-badge" id="todayDate"></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('attendance', this)">👥 Посещаемость</div>
+    <div class="tab" onclick="switchTab('subjects', this)">📚 Предметы и ДЗ</div>
+  </div>
+
+  <div id="tab-attendance">
+    <div class="lessons-bar" id="lessonsBar"></div>
+
+    <div class="stats-grid">
+      <div class="stat-card" data-filter="present" onclick="toggleFilter('present', this)">
+        <div class="stat-num" style="color: var(--green)" id="cntPresent">0</div>
+        <div class="stat-label">Будут</div>
+      </div>
+      <div class="stat-card" data-filter="late" onclick="toggleFilter('late', this)">
+        <div class="stat-num" style="color: var(--yellow)" id="cntLate">0</div>
+        <div class="stat-label">Опазд.</div>
+      </div>
+      <div class="stat-card" data-filter="absent" onclick="toggleFilter('absent', this)">
+        <div class="stat-num" style="color: var(--red)" id="cntAbsent">0</div>
+        <div class="stat-label">Не будут</div>
+      </div>
+      <div class="stat-card" data-filter="silent" onclick="toggleFilter('silent', this)">
+        <div class="stat-num" style="color: var(--hint)" id="cntSilent">0</div>
+        <div class="stat-label">Молчат</div>
+      </div>
+    </div>
+
+    <div class="student-list" id="studentList"></div>
+  </div>
+
+  <div id="tab-subjects" style="display: none;">
+    <div id="subjectsList"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    let state = null;
+    let activeFilter = null;
+    let selectedScheduleId = null;
+
+    const STATUS_LABELS = {
+      present: { text: "Будет", cls: "b-present" },
+      late: { text: "Опаздывает", cls: "b-late" },
+      absent: { text: "Не сможет", cls: "b-absent" },
+      silent: { text: "Молчит", cls: "b-silent" }
+    };
+
+    async function loadDashboard(schedId = null) {
+      const url = schedId ? `/api/dashboard?schedule_id=${schedId}` : "/api/dashboard";
+      const res = await fetch(url, {
+        headers: { "X-Telegram-Init-Data": tg.initData }
+      });
+      if (!res.ok) {
+        document.getElementById("groupTitle").innerText = "Ошибка доступа";
+        return;
+      }
+      state = await res.json();
+      selectedScheduleId = state.active_schedule_id;
+      render();
+    }
+
+    function render() {
+      document.getElementById("groupTitle").innerText = state.group_title;
+      document.getElementById("todayDate").innerText = state.date;
+
+      // Пары дня
+      const lessonsBar = document.getElementById("lessonsBar");
+      if (state.lessons.length === 0) {
+        lessonsBar.innerHTML = `<div class="lesson-chip active">Сегодня пар по расписанию нет</div>`;
+      } else {
+        lessonsBar.innerHTML = state.lessons.map(l => `
+          <div class="lesson-chip ${l.id === selectedScheduleId ? 'active' : ''}"
+               onclick="loadDashboard(${l.id})">
+            ${l.start_time} · ${l.subject}
+          </div>
+        `).join("");
+      }
+
+      // Счётчики
+      const counts = { present: 0, late: 0, absent: 0, silent: 0 };
+      state.students.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
+      document.getElementById("cntPresent").innerText = counts.present;
+      document.getElementById("cntLate").innerText = counts.late;
+      document.getElementById("cntAbsent").innerText = counts.absent;
+      document.getElementById("cntSilent").innerText = counts.silent;
+
+      // Список студентов
+      const filtered = activeFilter
+        ? state.students.filter(s => s.status === activeFilter)
+        : state.students;
+
+      const listEl = document.getElementById("studentList");
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div class="empty">Нет студентов с выбранным статусом</div>`;
+      } else {
+        listEl.innerHTML = filtered.map(st => {
+          const badge = STATUS_LABELS[st.status] || STATUS_LABELS.silent;
+          const warnHtml = st.absences_count >= 3
+            ? `<span class="badge b-warn">⚠️ ${st.absences_count} прогул(ов)</span>`
+            : `<span style="color: var(--hint)">Прогулов: ${st.absences_count}</span>`;
+
+          const controlsHtml = (state.is_admin && selectedScheduleId) ? `
+            <div class="actions">
+              <button class="act-btn ${st.status === 'present' ? 'selected' : ''}" onclick="setStatus(${st.id}, 'present')">✅</button>
+              <button class="act-btn ${st.status === 'late' ? 'selected' : ''}" onclick="setStatus(${st.id}, 'late')">⏳</button>
+              <button class="act-btn ${st.status === 'absent' ? 'selected' : ''}" onclick="setStatus(${st.id}, 'absent')">❌</button>
+            </div>
+          ` : "";
+
+          return `
+            <div class="student-card">
+              <div class="st-info">
+                <div class="st-name">${st.full_name}</div>
+                <div class="st-meta">
+                  <span class="badge ${badge.cls}">${badge.text}</span>
+                  ${warnHtml}
+                </div>
+              </div>
+              ${controlsHtml}
+            </div>
+          `;
+        }).join("");
+      }
+
+      // Вкладка предметов
+      const subjEl = document.getElementById("subjectsList");
+      if (state.subjects.length === 0) {
+        subjEl.innerHTML = `<div class="empty">Предметы ещё не добавлены</div>`;
+      } else {
+        subjEl.innerHTML = state.subjects.map(sub => {
+          const hwHtml = sub.homework.length
+            ? sub.homework.map(h => `<div class="hw-item"><span class="hw-date">${h.due_date}</span>${h.description}</div>`).join("")
+            : `<div class="hw-item" style="color: var(--hint)">Актуальной домашки нет</div>`;
+          return `
+            <div class="subj-card">
+              <div class="subj-title">
+                <span>📘 ${sub.name}</span>
+                <span style="font-size: 12px; color: var(--hint)">📎 Конспектов: ${sub.materials_count}</span>
+              </div>
+              ${hwHtml}
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    async function setStatus(studentId, status) {
+      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+      const res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Telegram-Init-Data": tg.initData
+        },
+        body: JSON.stringify({
+          schedule_id: selectedScheduleId,
+          student_id: studentId,
+          status: status,
+          lesson_date: state.date
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const st = state.students.find(x => x.id === studentId);
+        if (st) {
+          st.status = status;
+          st.absences_count = data.absences_count;
+        }
+        render();
+      }
+    }
+
+    function toggleFilter(status, el) {
+      document.querySelectorAll(".stat-card").forEach(c => c.classList.remove("active"));
+      if (activeFilter === status) {
+        activeFilter = null;
+      } else {
+        activeFilter = status;
+        el.classList.add("active");
+      }
+      render();
+    }
+
+    function switchTab(tabName, el) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      el.classList.add("active");
+      document.getElementById("tab-attendance").style.display = tabName === "attendance" ? "block" : "none";
+      document.getElementById("tab-subjects").style.display = tabName === "subjects" ? "block" : "none";
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
